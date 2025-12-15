@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>High Score Service</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f5f5f5;
+      }
+      .app-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      h2 {
+        margin-top: 24px;
+        margin-bottom: 8px;
+      }
+      .card {
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        margin-bottom: 16px;
+      }
+      .form-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .form-field {
+        flex: 1 1 150px;
+        display: flex;
+        flex-direction: column;
+      }
+      .form-field label {
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .form-field input {
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+      }
+      button {
+        padding: 8px 16px;
+        border-radius: 4px;
+        border: none;
+        background-color: #2563eb;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button[disabled] {
+        opacity: 0.7;
+        cursor: default;
+      }
+      .error {
+        color: #b91c1c;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      .leaderboard-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      .leaderboard-table th,
+      .leaderboard-table td {
+        border-bottom: 1px solid #e5e7eb;
+        padding: 6px 8px;
+        text-align: left;
+        font-size: 14px;
+      }
+      .leaderboard-table th {
+        background-color: #f3f4f6;
+        font-weight: 600;
+      }
+      .leaderboard-row-you {
+        background-color: #ecfeff;
+        font-weight: 600;
+      }
+      .badge-you {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background-color: #0ea5e9;
+        color: white;
+        font-size: 11px;
+      }
+      .muted {
+        color: #6b7280;
+        font-size: 13px;
+      }
+      .nav {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .nav button {
+        background-color: #e5e7eb;
+        color: #111827;
+      }
+      .nav button.active {
+        background-color: #2563eb;
+        color: white;
+      }
+    </style>
+    <!-- React, ReactDOM, Babel, Axios via CDN for a simple setup -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState } = React;
+
+      // --- API client -------------------------------------------------------
+      const api = axios.create({
+        // Same-origin calls to the Spring Boot backend
+        baseURL: '',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // --- Components -------------------------------------------------------
+
+      function ScoreForm({ values, onChange, onSubmit, loading, error }) {
+        const handleChange = (e) => {
+          const { name, value } = e.target;
+          onChange({ ...values, [name]: value });
+        };
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          onSubmit();
+        };
+
+        return (
+          <div className="card">
+            <h2>Submit Score</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="form-row">
+                <div className="form-field">
+                  <label htmlFor="userId">User ID</label>
+                  <input
+                    id="userId"
+                    name="userId"
+                    value={values.userId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="gameId">Game ID</label>
+                  <input
+                    id="gameId"
+                    name="gameId"
+                    value={values.gameId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-field">
+                  <label htmlFor="levelId">Level ID</label>
+                  <input
+                    id="levelId"
+                    name="levelId"
+                    value={values.levelId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="score">Score</label>
+                  <input
+                    id="score"
+                    name="score"
+                    type="number"
+                    min="0"
+                    value={values.score}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+              {error && <div className="error">{error}</div>}
+              <button type="submit" disabled={loading}>
+                {loading ? 'Submitting…' : 'Submit Score'}
+              </button>
+            </form>
+          </div>
+        );
+      }
+
+      function PersonalBest({ score }) {
+        return (
+          <div className="card">
+            <h2>Personal Best</h2>
+            {score != null ? (
+              <div>
+                <strong>{score}</strong>
+              </div>
+            ) : (
+              <div className="muted">Submit a score to see your personal best.</div>
+            )}
+          </div>
+        );
+      }
+
+      function LeaderboardRow({ entry, isCurrentUser }) {
+        return (
+          <tr className={isCurrentUser ? 'leaderboard-row-you' : ''}>
+            <td>{entry.rank}</td>
+            <td>
+              {entry.userId}
+              {isCurrentUser && <span className="badge-you">YOU</span>}
+            </td>
+            <td>{entry.score}</td>
+          </tr>
+        );
+      }
+
+      function Leaderboard({ title, entries, currentUserId, loading, error }) {
+        return (
+          <div className="card">
+            <h2>{title}</h2>
+            {loading && <div className="muted">Loading leaderboard…</div>}
+            {error && <div className="error">{error}</div>}
+            {!loading && !error && (!entries || entries.length === 0) && (
+              <div className="muted">No scores yet.</div>
+            )}
+            {!loading && !error && entries && entries.length > 0 && (
+              <table className="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry) => (
+                    <LeaderboardRow
+                      key={entry.userId + '-' + entry.rank}
+                      entry={entry}
+                      isCurrentUser={entry.userId === currentUserId}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+      }
+
+      function FriendManager({ values, onChange, friends, loading, error, onAddFriend, onLoadFriends }) {
+        const handleChange = (e) => {
+          const { name, value } = e.target;
+          onChange({ ...values, [name]: value });
+        };
+
+        const handleAdd = (e) => {
+          e.preventDefault();
+          onAddFriend();
+        };
+
+        const handleLoad = (e) => {
+          e.preventDefault();
+          onLoadFriends();
+        };
+
+        return (
+          <div className="card">
+            <h2>Manage Friends</h2>
+            <form onSubmit={handleAdd}>
+              <div className="form-row">
+                <div className="form-field">
+                  <label htmlFor="userId-friend">User ID</label>
+                  <input
+                    id="userId-friend"
+                    name="userId"
+                    value={values.userId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="friendId">Friend ID to add</label>
+                  <input
+                    id="friendId"
+                    name="friendId"
+                    value={values.friendId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+              {error && <div className="error">{error}</div>}
+              <button type="submit" disabled={loading}>
+                {loading ? 'Saving…' : 'Add Friend (bidirectional)'}
+              </button>
+            </form>
+
+            <form onSubmit={handleLoad} style={{ marginTop: '16px' }}>
+              <div className="form-row">
+                <div className="form-field">
+                  <label htmlFor="userId-view">View friends of User ID</label>
+                  <input
+                    id="userId-view"
+                    name="userId"
+                    value={values.userId}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+              <button type="submit" disabled={loading}>
+                {loading ? 'Loading…' : 'Load Friends'}
+              </button>
+            </form>
+
+            {friends && friends.length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <div className="muted">Friends of {values.userId}:</div>
+                <ul>
+                  {friends.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Merge the current user's score into the leaderboard on the client side
+      // so the UI is optimistic even before Redis worker updates have fully
+      // propagated. This function:
+      // - Ensures the user appears in the list
+      // - Keeps the higher score if both backend and client have values
+      // - Sorts by score desc and recomputes ranks
+      function mergeUserIntoLeaderboard(entries, userId, score, limit) {
+        if (!userId || score == null) {
+          return entries || [];
+        }
+        const cloned = (entries || []).map((e) => ({ ...e }));
+        const idx = cloned.findIndex((e) => e.userId === userId);
+        if (idx >= 0) {
+          // Prefer the higher of backend vs client score.
+          cloned[idx].score = Math.max(Number(cloned[idx].score || 0), Number(score));
+        } else {
+          cloned.push({ userId, score: Number(score), rank: null });
+        }
+        cloned.sort((a, b) => Number(b.score) - Number(a.score));
+        cloned.forEach((e, i) => {
+          e.rank = i + 1;
+        });
+        return cloned.slice(0, limit);
+      }
+
+      function App() {
+        const [formValues, setFormValues] = useState({
+          userId: '',
+          gameId: '',
+          levelId: '',
+          score: ''
+        });
+        const [view, setView] = useState('submit'); // 'submit' | 'global' | 'friends' | 'manageFriends'
+        const [personalBest, setPersonalBest] = useState(null);
+        const [submitting, setSubmitting] = useState(false);
+        const [submitError, setSubmitError] = useState('');
+
+        const [globalEntries, setGlobalEntries] = useState([]);
+        const [friendsEntries, setFriendsEntries] = useState([]);
+        const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+        const [leaderboardError, setLeaderboardError] = useState('');
+
+        const [friendForm, setFriendForm] = useState({
+          userId: '',
+          friendId: ''
+        });
+        const [friendList, setFriendList] = useState([]);
+        const [friendLoading, setFriendLoading] = useState(false);
+        const [friendError, setFriendError] = useState('');
+
+        // Remember the last score submission context so we only merge it
+        // optimistically into the matching gameId/levelId leaderboards.
+        const [lastScoreContext, setLastScoreContext] = useState(null);
+
+        const limit = 10;
+
+        const handleSubmitScore = async () => {
+          const { userId, gameId, levelId, score } = formValues;
+          if (!userId || !gameId || !levelId || score === '') {
+            setSubmitError('All fields are required.');
+            return;
+          }
+          const numericScore = Number(score);
+          if (Number.isNaN(numericScore) || numericScore < 0) {
+            setSubmitError('Score must be a non-negative number.');
+            return;
+          }
+
+          setSubmitError('');
+          setSubmitting(true);
+
+          try {
+            const payload = {
+              userId,
+              gameId,
+              levelId,
+              score: numericScore,
+              // Simple unique request ID for idempotency
+              requestId: 'web-' + Date.now() + '-' + Math.random().toString(16).slice(2)
+            };
+            const resp = await api.post('/api/v1/scores', payload);
+            const bestScore = resp.data && typeof resp.data.score === 'number'
+              ? resp.data.score
+              : numericScore;
+            setPersonalBest(bestScore);
+
+            setLastScoreContext({
+              userId,
+              gameId,
+              levelId,
+              score: bestScore
+            });
+
+            // Immediately show the user in leaderboards optimistically
+            await fetchLeaderboards(userId, gameId, levelId);
+          } catch (err) {
+            console.error(err);
+            setSubmitError('Failed to submit score. Please try again.');
+          } finally {
+            setSubmitting(false);
+          }
+        };
+
+        const fetchLeaderboards = async (userId, gameId, levelId) => {
+          setLeaderboardLoading(true);
+          setLeaderboardError('');
+          try {
+            const [globalResp, friendsResp] = await Promise.all([
+              api.get('/api/v1/leaderboards/global', {
+                params: { gameId, levelId, limit }
+              }),
+              api.get('/api/v1/leaderboards/friends', {
+                params: { userId, gameId, levelId, limit }
+              })
+            ]);
+
+            const globalEntriesRaw = (globalResp.data && globalResp.data.entries) || [];
+            const friendsEntriesRaw = (friendsResp.data && friendsResp.data.entries) || [];
+
+            // Only merge the local score if it was submitted for this exact
+            // gameId/levelId/userId combination.
+            let optimisticScore = null;
+            if (
+              lastScoreContext &&
+              lastScoreContext.userId === userId &&
+              lastScoreContext.gameId === gameId &&
+              lastScoreContext.levelId === levelId
+            ) {
+              optimisticScore = lastScoreContext.score;
+            }
+
+            setGlobalEntries(
+              mergeUserIntoLeaderboard(globalEntriesRaw, userId, optimisticScore, limit)
+            );
+            setFriendsEntries(
+              mergeUserIntoLeaderboard(friendsEntriesRaw, userId, optimisticScore, limit)
+            );
+          } catch (err) {
+            console.error(err);
+            setLeaderboardError('Failed to load leaderboards.');
+            // Still show optimistic local-only data if we have it for this context
+            if (lastScoreContext) {
+              setGlobalEntries(
+                mergeUserIntoLeaderboard([], lastScoreContext.userId, lastScoreContext.score, limit)
+              );
+              setFriendsEntries(
+                mergeUserIntoLeaderboard([], lastScoreContext.userId, lastScoreContext.score, limit)
+              );
+            }
+          } finally {
+            setLeaderboardLoading(false);
+          }
+        };
+
+        const handleAddFriend = async () => {
+          const { userId, friendId } = friendForm;
+          if (!userId || !friendId) {
+            setFriendError('Both userId and friendId are required.');
+            return;
+          }
+          setFriendError('');
+          setFriendLoading(true);
+          try {
+            await api.post('/api/v1/friends', { userId, friendId });
+            // Reload friends for that user to reflect the new relationship.
+            const resp = await api.get('/api/v1/friends', { params: { userId } });
+            const friends = (resp.data && resp.data.friends) || [];
+            setFriendList(friends);
+          } catch (err) {
+            console.error(err);
+            setFriendError('Failed to add friend.');
+          } finally {
+            setFriendLoading(false);
+          }
+        };
+
+        const handleLoadFriends = async () => {
+          const { userId } = friendForm;
+          if (!userId) {
+            setFriendError('UserId is required.');
+            return;
+          }
+          setFriendError('');
+          setFriendLoading(true);
+          try {
+            const resp = await api.get('/api/v1/friends', { params: { userId } });
+            const friends = (resp.data && resp.data.friends) || [];
+            setFriendList(friends);
+          } catch (err) {
+            console.error(err);
+            setFriendError('Failed to load friends.');
+          } finally {
+            setFriendLoading(false);
+          }
+        };
+
+        let content = null;
+        if (view === 'submit') {
+          content = (
+            <>
+              <ScoreForm
+                values={formValues}
+                onChange={setFormValues}
+                onSubmit={handleSubmitScore}
+                loading={submitting}
+                error={submitError}
+              />
+              <PersonalBest score={personalBest} />
+            </>
+          );
+        } else if (view === 'global') {
+          content = (
+            <>
+              <div className="card">
+                <h2>Global Leaderboard Filters</h2>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label htmlFor="gameId-global">Game ID</label>
+                    <input
+                      id="gameId-global"
+                      name="gameId"
+                      value={formValues.gameId}
+                      onChange={(e) => setFormValues({ ...formValues, gameId: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="levelId-global">Level ID</label>
+                    <input
+                      id="levelId-global"
+                      name="levelId"
+                      value={formValues.levelId}
+                      onChange={(e) => setFormValues({ ...formValues, levelId: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    fetchLeaderboards(
+                      formValues.userId,
+                      formValues.gameId,
+                      formValues.levelId
+                    )
+                  }
+                  disabled={leaderboardLoading}
+                >
+                  {leaderboardLoading ? 'Refreshing…' : 'Refresh Global Leaderboard'}
+                </button>
+              </div>
+              <Leaderboard
+                title="Global Leaderboard"
+                entries={globalEntries}
+                currentUserId={formValues.userId}
+                loading={leaderboardLoading}
+                error={leaderboardError}
+              />
+            </>
+          );
+        } else if (view === 'friends') {
+          content = (
+            <>
+              <div className="card">
+                <h2>Friends Leaderboard Filters</h2>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label htmlFor="userId-friends">User ID</label>
+                    <input
+                      id="userId-friends"
+                      name="userId"
+                      value={formValues.userId}
+                      onChange={(e) => setFormValues({ ...formValues, userId: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="gameId-friends">Game ID</label>
+                    <input
+                      id="gameId-friends"
+                      name="gameId"
+                      value={formValues.gameId}
+                      onChange={(e) => setFormValues({ ...formValues, gameId: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label htmlFor="levelId-friends">Level ID</label>
+                    <input
+                      id="levelId-friends"
+                      name="levelId"
+                      value={formValues.levelId}
+                      onChange={(e) => setFormValues({ ...formValues, levelId: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    fetchLeaderboards(
+                      formValues.userId,
+                      formValues.gameId,
+                      formValues.levelId
+                    )
+                  }
+                  disabled={leaderboardLoading}
+                >
+                  {leaderboardLoading ? 'Refreshing…' : 'Refresh Friends Leaderboard'}
+                </button>
+              </div>
+              <Leaderboard
+                title="Friends Leaderboard"
+                entries={friendsEntries}
+                currentUserId={formValues.userId}
+                loading={leaderboardLoading}
+                error={leaderboardError}
+              />
+            </>
+          );
+        } else if (view === 'manageFriends') {
+          content = (
+            <FriendManager
+              values={friendForm}
+              onChange={setFriendForm}
+              friends={friendList}
+              loading={friendLoading}
+              error={friendError}
+              onAddFriend={handleAddFriend}
+              onLoadFriends={handleLoadFriends}
+            />
+          );
+        }
+
+        return (
+          <div className="app-container">
+            <h1>High Score Service</h1>
+            <p className="muted">
+              Simple demo of scores, global and friends leaderboards, and in-memory friends.
+            </p>
+
+            <div className="nav">
+              <button
+                className={view === 'submit' ? 'active' : ''}
+                onClick={() => setView('submit')}
+              >
+                1. Submit Score
+              </button>
+              <button
+                className={view === 'global' ? 'active' : ''}
+                onClick={() => setView('global')}
+              >
+                2. Global List
+              </button>
+              <button
+                className={view === 'friends' ? 'active' : ''}
+                onClick={() => setView('friends')}
+              >
+                3. Friends List
+              </button>
+              <button
+                className={view === 'manageFriends' ? 'active' : ''}
+                onClick={() => setView('manageFriends')}
+              >
+                4. Manage Friends
+              </button>
+            </div>
+
+            {content}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
+
+
