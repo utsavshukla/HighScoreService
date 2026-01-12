@@ -12,12 +12,6 @@ public class InMemoryFriendService implements FriendService {
 
     private final Map<String, Set<String>> friendsByUser = new HashMap<>();
 
-    public InMemoryFriendService() {
-        // Sample data to illustrate friend leaderboards.
-        friendsByUser.put("alice", new HashSet<>(Set.of("bob", "charlie")));
-        friendsByUser.put("bob", new HashSet<>(Set.of("alice")));
-    }
-
     @Override
     public Set<String> getFriendIds(String userId) {
         return new HashSet<>(friendsByUser.getOrDefault(userId, Collections.emptySet()));

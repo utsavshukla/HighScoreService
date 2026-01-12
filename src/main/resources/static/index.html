@@ -210,35 +210,18 @@
         );
       }
 
-      function PersonalBest({ score }) {
-        return (
-          <div className="card">
-            <h2>Personal Best</h2>
-            {score != null ? (
-              <div>
-                <strong>{score}</strong>
-              </div>
-            ) : (
-              <div className="muted">Submit a score to see your personal best.</div>
-            )}
-          </div>
-        );
-      }
 
-      function LeaderboardRow({ entry, isCurrentUser }) {
+      function LeaderboardRow({ entry }) {
         return (
-          <tr className={isCurrentUser ? 'leaderboard-row-you' : ''}>
+          <tr>
             <td>{entry.rank}</td>
-            <td>
-              {entry.userId}
-              {isCurrentUser && <span className="badge-you">YOU</span>}
-            </td>
+            <td>{entry.userId}</td>
             <td>{entry.score}</td>
           </tr>
         );
       }
 
-      function Leaderboard({ title, entries, currentUserId, loading, error }) {
+      function Leaderboard({ title, entries, loading, error }) {
         return (
           <div className="card">
             <h2>{title}</h2>
@@ -261,7 +244,6 @@
                     <LeaderboardRow
                       key={entry.userId + '-' + entry.rank}
                       entry={entry}
-                      isCurrentUser={entry.userId === currentUserId}
                     />
                   ))}
                 </tbody>
@@ -384,7 +366,6 @@
           score: ''
         });
         const [view, setView] = useState('submit'); // 'submit' | 'global' | 'friends' | 'manageFriends'
-        const [personalBest, setPersonalBest] = useState(null);
         const [submitting, setSubmitting] = useState(false);
         const [submitError, setSubmitError] = useState('');
 
@@ -427,15 +408,12 @@
               userId,
               gameId,
               levelId,
-              score: numericScore,
-              // Simple unique request ID for idempotency
-              requestId: 'web-' + Date.now() + '-' + Math.random().toString(16).slice(2)
+              score: numericScore
             };
             const resp = await api.post('/api/v1/scores', payload);
             const bestScore = resp.data && typeof resp.data.score === 'number'
               ? resp.data.score
               : numericScore;
-            setPersonalBest(bestScore);
 
             setLastScoreContext({
               userId,
@@ -470,35 +448,69 @@
             const globalEntriesRaw = (globalResp.data && globalResp.data.entries) || [];
             const friendsEntriesRaw = (friendsResp.data && friendsResp.data.entries) || [];
 
-            // Only merge the local score if it was submitted for this exact
-            // gameId/levelId/userId combination.
-            let optimisticScore = null;
+            // For global leaderboard: show all entries from Redis as-is
+            // Only merge optimistic score if it matches the exact context and user isn't already in the list
+            let globalOptimisticScore = null;
+            let globalOptimisticUserId = null;
+            if (
+              lastScoreContext &&
+              lastScoreContext.gameId === gameId &&
+              lastScoreContext.levelId === levelId
+            ) {
+              // Check if user is already in the list
+              const userAlreadyInList = globalEntriesRaw.some(e => e.userId === lastScoreContext.userId);
+              if (!userAlreadyInList) {
+                // User not in Redis yet, add optimistically
+                globalOptimisticScore = lastScoreContext.score;
+                globalOptimisticUserId = lastScoreContext.userId;
+              }
+            }
+
+            // For friends leaderboard: only merge if userId matches and context matches
+            let friendsOptimisticScore = null;
             if (
               lastScoreContext &&
               lastScoreContext.userId === userId &&
               lastScoreContext.gameId === gameId &&
               lastScoreContext.levelId === levelId
             ) {
-              optimisticScore = lastScoreContext.score;
+              const userAlreadyInFriendsList = friendsEntriesRaw.some(e => e.userId === lastScoreContext.userId);
+              if (!userAlreadyInFriendsList) {
+                friendsOptimisticScore = lastScoreContext.score;
+              }
             }
 
-            setGlobalEntries(
-              mergeUserIntoLeaderboard(globalEntriesRaw, userId, optimisticScore, limit)
-            );
-            setFriendsEntries(
-              mergeUserIntoLeaderboard(friendsEntriesRaw, userId, optimisticScore, limit)
-            );
+            // Only merge if we have an optimistic score to add
+            if (globalOptimisticUserId && globalOptimisticScore != null) {
+              setGlobalEntries(
+                mergeUserIntoLeaderboard(globalEntriesRaw, globalOptimisticUserId, globalOptimisticScore, limit)
+              );
+            } else {
+              // Show all entries from Redis as-is, no merge
+              setGlobalEntries(globalEntriesRaw);
+            }
+
+            if (friendsOptimisticScore != null) {
+              setFriendsEntries(
+                mergeUserIntoLeaderboard(friendsEntriesRaw, userId, friendsOptimisticScore, limit)
+              );
+            } else {
+              // Show all entries from Redis as-is, no merge
+              setFriendsEntries(friendsEntriesRaw);
+            }
           } catch (err) {
             console.error(err);
             setLeaderboardError('Failed to load leaderboards.');
             // Still show optimistic local-only data if we have it for this context
-            if (lastScoreContext) {
+            if (lastScoreContext && lastScoreContext.gameId === gameId && lastScoreContext.levelId === levelId) {
               setGlobalEntries(
                 mergeUserIntoLeaderboard([], lastScoreContext.userId, lastScoreContext.score, limit)
               );
-              setFriendsEntries(
-                mergeUserIntoLeaderboard([], lastScoreContext.userId, lastScoreContext.score, limit)
-              );
+              if (lastScoreContext.userId === userId) {
+                setFriendsEntries(
+                  mergeUserIntoLeaderboard([], lastScoreContext.userId, lastScoreContext.score, limit)
+                );
+              }
             }
           } finally {
             setLeaderboardLoading(false);
@@ -550,16 +562,13 @@
         let content = null;
         if (view === 'submit') {
           content = (
-            <>
-              <ScoreForm
-                values={formValues}
-                onChange={setFormValues}
-                onSubmit={handleSubmitScore}
-                loading={submitting}
-                error={submitError}
-              />
-              <PersonalBest score={personalBest} />
-            </>
+            <ScoreForm
+              values={formValues}
+              onChange={setFormValues}
+              onSubmit={handleSubmitScore}
+              loading={submitting}
+              error={submitError}
+            />
           );
         } else if (view === 'global') {
           content = (
@@ -602,7 +611,6 @@
               <Leaderboard
                 title="Global Leaderboard"
                 entries={globalEntries}
-                currentUserId={formValues.userId}
                 loading={leaderboardLoading}
                 error={leaderboardError}
               />
@@ -658,7 +666,6 @@
               <Leaderboard
                 title="Friends Leaderboard"
                 entries={friendsEntries}
-                currentUserId={formValues.userId}
                 loading={leaderboardLoading}
                 error={leaderboardError}
               />

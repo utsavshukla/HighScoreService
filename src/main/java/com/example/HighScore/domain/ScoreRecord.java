@@ -39,9 +39,6 @@ public class ScoreRecord {
     @Column(name = "score_value", nullable = false)
     private long score;
 
-    @Column(name = "last_request_id", nullable = false)
-    private String lastRequestId;
-
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 

@@ -26,32 +26,24 @@ public class ScoreService {
 
         if (existingOpt.isPresent()) {
             ScoreRecord existing = existingOpt.get();
-            // Idempotent if same request id seen before.
-            if (request.getRequestId().equals(existing.getLastRequestId())) {
-                return new ScoreSubmissionResponse(false, existing.getScore());
-            }
-
             boolean improved = request.getScore() > existing.getScore();
             if (improved) {
                 existing.setScore(request.getScore());
-            }
-            existing.setLastRequestId(request.getRequestId());
-            existing.setUpdatedAt(Instant.now());
-            scoreRepository.save(existing);
-
-            if (improved) {
+                existing.setUpdatedAt(Instant.now());
+                scoreRepository.save(existing);
                 publishScoreEvent(request);
                 return new ScoreSubmissionResponse(true, existing.getScore());
             }
+            // Score not improved, no update needed
             return new ScoreSubmissionResponse(false, existing.getScore());
         }
 
+        // New record
         ScoreRecord record = new ScoreRecord();
         record.setUserId(request.getUserId());
         record.setGameId(request.getGameId());
         record.setLevelId(request.getLevelId());
         record.setScore(request.getScore());
-        record.setLastRequestId(request.getRequestId());
         record.setUpdatedAt(Instant.now());
         scoreRepository.save(record);
 

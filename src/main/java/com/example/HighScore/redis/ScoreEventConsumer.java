@@ -4,9 +4,10 @@ import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -21,11 +22,14 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @EnableScheduling
-@RequiredArgsConstructor
 public class ScoreEventConsumer {
 
-    private final RedisTemplate<String, String> redisTemplate;
-    private final LeaderboardUpdater leaderboardUpdater;
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
+    
+    @Autowired
+    @Lazy
+    private LeaderboardUpdater leaderboardUpdater;
 
     @Value("${highscore.stream.consumer-group:score-workers}")
     private String consumerGroup;
@@ -37,7 +41,20 @@ public class ScoreEventConsumer {
     private long pollIntervalMs;
 
     @PostConstruct
-    public void ensureGroup() {
+    public void init() {
+        // Verify RedisTemplate is injected
+        if (redisTemplate == null) {
+            log.error("RedisTemplate is null after @PostConstruct! This indicates a dependency injection issue.");
+            throw new IllegalStateException("RedisTemplate must be injected before initialization");
+        }
+        log.debug("ScoreEventConsumer initialized with RedisTemplate: {}", redisTemplate != null);
+    }
+    
+    private void ensureGroupIfNeeded() {
+        if (redisTemplate == null) {
+            log.warn("RedisTemplate is not yet initialized, skipping group creation");
+            return;
+        }
         StreamOperations<String, String, String> streamOps = redisTemplate.opsForStream();
         try {
             streamOps.createGroup(ScoreEventPublisher.STREAM_KEY, ReadOffset.latest(), consumerGroup);
@@ -51,6 +68,14 @@ public class ScoreEventConsumer {
     @Scheduled(fixedDelayString = "${highscore.stream.poll-interval-ms:1000}")
     @SuppressWarnings("unchecked")
     public void poll() {
+        if (redisTemplate == null) {
+            log.debug("RedisTemplate not yet initialized, skipping poll");
+            return;
+        }
+        
+        // Ensure group exists before polling
+        ensureGroupIfNeeded();
+        
         StreamOperations<String, String, String> streamOps = redisTemplate.opsForStream();
         List<MapRecord<String, String, String>> records = streamOps.read(
                 Consumer.from(consumerGroup, consumerName),
